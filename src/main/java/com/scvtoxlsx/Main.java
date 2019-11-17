@@ -8,24 +8,35 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Main {
+
+    private static int n = 0;
+    private static final String INPUT_CSV_PATH = "./in";
+    private static final String OUTPUT_CSV_PATH = "./out/processing.csv";
+    private static final String SEPARATOR = ";";
+    private static final String OUTPUT_XLSX_PATH = "./out/confluence.xlsx";
+
     public static void main(String[] args) {
         try {
 
             List<Data> objects = csvToListOfObjects(
-                "./in",
+                INPUT_CSV_PATH,
 
                 pathName -> {
                     try {
                         return csvToObject(
                             pathName,
-                            ";",
+                            SEPARATOR,
                             (key, value, data) -> {
                                 if ("key1".equals(key))
                                     data.setValue1(value);
@@ -44,15 +55,17 @@ public class Main {
                 }
             );
 
-            objectsToCsv(objects, "./out/processing.csv", ";",
+            objectsToCsv(objects, OUTPUT_CSV_PATH, SEPARATOR,
 
-                (string, printWriter) ->
-                {
-
+                (sep, pw) -> {
+                    pw.println("blablabla".concat(sep).concat(getDateNow()).concat(sep).concat("MANUAL_VALUE"));
                 },
 
-                (string, printWriter) -> {
+                (o, sep) -> o.getId().concat(sep).concat(o.getValue1()).concat(System.lineSeparator())
+                        .concat(o.getValue2()).concat(sep).concat("MANUAL_VALUE3").concat(sep).concat(o.getValue3()),
 
+                (sep, pw) -> {
+                    pw.println("MANUAL_VALUE2".concat(sep).concat(String.valueOf(n)).concat(sep).concat("blablabla4"));
                 }
             );
 
@@ -68,7 +81,7 @@ public class Main {
 
                 objects,
 
-                "./out/confluence.xlsx");
+                OUTPUT_XLSX_PATH);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -92,6 +105,8 @@ public class Main {
     private static Data csvToObject(String csvPath, String splitChar, TriConsumer<String, String, Data> triConsumer) throws IOException {
         try (BufferedReader reader = Files.newBufferedReader(Paths.get(csvPath), StandardCharsets.UTF_8)) {
 
+            System.out.println("csvToObject started...");
+
             Data data = new Data();
             data.setId(fileName(csvPath));
 
@@ -103,6 +118,9 @@ public class Main {
 
                 triConsumer.accept(key, value, data);
             }
+
+            System.out.println("csvToObject successfully completed!");
+
             return data;
         }
     }
@@ -116,6 +134,9 @@ public class Main {
     }
 
     private static void objToXlsx(String[] titleColumns, BiConsumer<Row, Data> dataColumns, List<Data> objects, String xlsxPath) throws IOException {
+
+        System.out.println("objToXlsx started...");
+
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("Data");
 
@@ -123,6 +144,8 @@ public class Main {
         fillDataColumns(objects, sheet, dataColumns);
         resize(titleColumns, sheet);
         writeToFile(xlsxPath, workbook);
+
+        System.out.println("objToXlsx successfully completed!");
     }
 
     private static void fillTitleColumns(Workbook workbook, Sheet sheet, String[] titleColumns) {
@@ -166,36 +189,34 @@ public class Main {
 
     private static void objectsToCsv(List<Data> objects, String csvFilePath, String separator,
                               BiConsumer<String, PrintWriter> beforeObjectsToScv,
+                              BiFunction<Data, String, String> convertToCsv,
                               BiConsumer<String, PrintWriter> afterObjectsToScv) throws FileNotFoundException {
+
+        System.out.println("objectsToCsv started...");
+
         File csvOutputFile = new File(csvFilePath);
 
         try (PrintWriter pw = new PrintWriter(csvOutputFile)) {
             beforeObjectsToScv.accept(separator, pw);
-            objectsToCsv(objects, separator, pw);
+            objectsToCsv(objects, separator, pw, convertToCsv);
             afterObjectsToScv.accept(separator, pw);
         }
 
-    }
-
-    private static void beforeObjectsToScv(String separator, PrintWriter pw) {
+        System.out.println("objectsToCsv successfully completed!");
 
     }
 
-    private static void objectsToCsv(List<Data> objects, String separator, PrintWriter pw) {
-
+    private static void objectsToCsv(List<Data> objects, String sep, PrintWriter pw, BiFunction<Data, String, String> convertToScv) {
         objects.stream()
-                .map(data -> convertToCsv(data, separator))
-                .forEach(pw::println);
-
-
+                .map(data -> convertToScv.apply(data, sep))
+                .forEach(s -> {
+                    pw.println(s);
+                    n ++;
+                });
     }
 
-    private static void afterObjectsToScv(String separator, PrintWriter pw) {
-
-    }
-
-    private static String convertToCsv(Data o, String sep) {
-        return o.getId() + sep
-                + o.getValue2();
+    public static String getDateNow() {
+        return LocalDateTime.now().format(new DateTimeFormatterBuilder()
+                .parseCaseInsensitive().appendPattern("yyyyMMddHHmm").toFormatter(Locale.ENGLISH));
     }
 }
